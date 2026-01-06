@@ -1,12 +1,13 @@
 
 import { RepairStage, RepairTask, StageHistory, Staff } from './types';
 
+// Add missing shopId to mock users
 export const MOCK_USERS: Staff[] = [
-  { id: 'S001', name: '王总监', role: 'MANAGER' },
-  { id: 'S002', name: '李理赔', role: 'CONSULTANT' },
-  { id: 'S003', name: '张钣金', role: 'METALWORKER' },
-  { id: 'S004', name: '赵喷漆', role: 'PAINTER' },
-  { id: 'S005', name: '钱备件', role: 'SPARE_PARTS' },
+  { id: 'S001', shopId: 'DEFAULT_SHOP', username: 'S001', name: '王总监', role: 'MANAGER' },
+  { id: 'S002', shopId: 'DEFAULT_SHOP', username: 'S002', name: '李理赔', role: 'CONSULTANT' },
+  { id: 'S003', shopId: 'DEFAULT_SHOP', username: 'S003', name: '张钣金', role: 'METALWORKER' },
+  { id: 'S004', shopId: 'DEFAULT_SHOP', username: 'S004', name: '赵喷漆', role: 'PAINTER' },
+  { id: 'S005', shopId: 'DEFAULT_SHOP', username: 'S005', name: '钱备件', role: 'SPARE_PARTS' },
 ];
 
 export const STAGE_COLORS: Record<RepairStage, string> = {
@@ -33,12 +34,12 @@ const generateMockTasks = (): RepairTask[] => {
     const insurer = insurers[Math.floor(Math.random() * insurers.length)];
     
     let amount = Math.floor(Math.random() * 15000) + 500;
-    const createdAt = now - Math.floor(Math.random() * 5 * 24 * 3600000);
-    const expectedDeliveryTime = createdAt + (Math.floor(Math.random() * 4) + 2) * 24 * 3600000;
+    const entryTime = now - Math.floor(Math.random() * 5 * 24 * 3600000);
+    const expectedDeliveryTime = entryTime + (Math.floor(Math.random() * 4) + 2) * 24 * 3600000;
     const stageIdx = Math.floor(Math.random() * stages.length);
     
     const history: StageHistory[] = [];
-    let currentTime = createdAt;
+    let currentTime = entryTime;
     for (let j = 0; j <= stageIdx; j++) {
       const startTime = currentTime;
       const endTime = (j < stageIdx) ? startTime + 3600000 * 4 : undefined;
@@ -46,10 +47,11 @@ const generateMockTasks = (): RepairTask[] => {
       if (endTime) currentTime = endTime + 3600000;
     }
 
+    // Add missing shopId to mock tasks
     tasks.push({
-      id, licensePlate: plate, contactPerson: contact, insuranceCompany: insurer,
+      id, shopId: 'DEFAULT_SHOP', licensePlate: plate, contactPerson: contact, insuranceCompany: insurer,
       assessmentAmount: amount, expectedDeliveryTime, currentStage: stages[stageIdx],
-      isSparePartsReady: Math.random() > 0.4, remarks: '演示数据备注', createdAt, history
+      isSparePartsReady: Math.random() > 0.4, remarks: '演示数据备注', entryTime, history
     });
   }
   return tasks;

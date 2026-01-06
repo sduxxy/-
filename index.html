@@ -1,13 +1,13 @@
-
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>事故车辆维修进度监控系统</title>
+    <title>精诚智管 · 事故车维修监控系统</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 LeanCloud SDK，更换为更稳定的 jsDelivr 源 -->
+    <script src="https://cdn.jsdelivr.net/npm/leancloud-storage@4.15.0/dist/av-min.js"></script>
     <style>
-        /* 全局强制微软雅黑字体，保持原有颜色、大小、加粗逻辑 */
         body { 
             font-family: "Microsoft YaHei", "微软雅黑", -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; 
         }
@@ -15,8 +15,6 @@
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-        
-        /* 确保所有加粗使用加重的效果 */
         .font-black { font-weight: 900; }
         .font-bold { font-weight: 700; }
     </style>

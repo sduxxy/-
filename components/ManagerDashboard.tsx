@@ -1,6 +1,6 @@
 
 import React, { useMemo, useState } from 'react';
-import { RepairTask, RepairStage, STAGE_ORDER } from '../types';
+import { RepairTask, RepairStage, STAGE_ORDER, Role } from '../types';
 import { STAGE_COLORS, KPI_TREND_DATA } from '../constants';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
@@ -13,22 +13,20 @@ import {
 
 interface Props {
   tasks: RepairTask[];
+  role: Role;
   onToggleParts: (taskId: string) => void;
   onUpdateRemarks: (taskId: string, newRemarks: string) => void;
 }
 
-// 工作时间计算逻辑 (9:00 - 18:00)
 const getWorkingHoursDeadline = (startTime: number, hoursNeeded: number): number => {
   const WORK_START = 9;
   const WORK_END = 18;
   let current = new Date(startTime);
   let remainingMs = hoursNeeded * 3600000;
 
-  // 如果进厂时间早于9点，从当日9点开始算
   if (current.getHours() < WORK_START) {
     current.setHours(WORK_START, 0, 0, 0);
   }
-  // 如果进厂时间晚于18点，从次日9点开始算
   if (current.getHours() >= WORK_END) {
     current.setDate(current.getDate() + 1);
     current.setHours(WORK_START, 0, 0, 0);
@@ -37,15 +35,10 @@ const getWorkingHoursDeadline = (startTime: number, hoursNeeded: number): number
   while (remainingMs > 0) {
     let todayEnd = new Date(current);
     todayEnd.setHours(WORK_END, 0, 0, 0);
-    
-    // 计算当前时间到当日下班还剩多少毫秒
     let timeLeftToday = todayEnd.getTime() - current.getTime();
-    
     if (timeLeftToday >= remainingMs) {
-      // 可以在当日完成
       return current.getTime() + remainingMs;
     } else {
-      // 扣除当日剩余工作时间，跳到次日9点
       remainingMs -= timeLeftToday;
       current.setDate(current.getDate() + 1);
       current.setHours(WORK_START, 0, 0, 0);
@@ -54,9 +47,11 @@ const getWorkingHoursDeadline = (startTime: number, hoursNeeded: number): number
   return current.getTime();
 };
 
-const ManagerDashboard: React.FC<Props> = ({ tasks, onUpdateRemarks }) => {
+const ManagerDashboard: React.FC<Props> = ({ tasks, role, onUpdateRemarks }) => {
   const [activeTrend, setActiveTrend] = useState<'ASSESSMENT' | 'DELIVERY' | 'FAST_REPAIR' | null>(null);
   const [editingRemarksId, setEditingRemarksId] = useState<string | null>(null);
+
+  const isHQ = role === 'HQ_OPERATOR';
 
   const stats = useMemo(() => {
     const active = tasks.filter(t => t.currentStage !== RepairStage.FINISHED);
@@ -66,8 +61,6 @@ const ManagerDashboard: React.FC<Props> = ({ tasks, onUpdateRemarks }) => {
     let assessmentPassed = 0;
     let deliveryEligible = 0;
     let deliveryPassed = 0;
-    
-    // 小额快修指标统计
     let smallRepairEligible = 0;
     let smallRepairPassed = 0;
 
@@ -77,40 +70,36 @@ const ManagerDashboard: React.FC<Props> = ({ tasks, onUpdateRemarks }) => {
       const finalHistory = task.history[task.history.length - 1];
       const actualFinishTime = isFinished ? (finalHistory?.endTime || Date.now()) : Date.now();
 
-      // 定损时效 SLA
       const assessmentDone = task.history.find(h => h.stage === RepairStage.ASSESSMENT && h.endTime);
       const targetTime = task.assessmentAmount < 2000 ? 4 : (task.assessmentAmount <= 10000 ? 48 : null);
       if (targetTime) {
         assessmentEligible++;
         const deadline = task.assessmentAmount < 2000 
-          ? getWorkingHoursDeadline(task.createdAt, 4) 
-          : task.createdAt + 48 * 3600000;
+          ? getWorkingHoursDeadline(task.entryTime, 4) 
+          : task.entryTime + 48 * 3600000;
         const finishTime = assessmentDone?.endTime || Date.now();
         if (finishTime <= deadline) assessmentPassed++;
       }
 
-      // 预计交车达成率
       if (isFinished || Date.now() > task.expectedDeliveryTime) {
         deliveryEligible++;
         if (actualFinishTime <= task.expectedDeliveryTime) deliveryPassed++;
       }
 
-      // 小额快修达成率 (2000元以下，8个工作小时内交付)
       if (isSmallRepair) {
         smallRepairEligible++;
-        const fastRepairDeadline = getWorkingHoursDeadline(task.createdAt, 8);
+        const fastRepairDeadline = getWorkingHoursDeadline(task.entryTime, 8);
         if (actualFinishTime <= fastRepairDeadline) {
           smallRepairPassed++;
         }
       }
 
-      // 超期预警统计
       let isAssOver = false;
       let isDelOver = Date.now() > task.expectedDeliveryTime;
       if (task.currentStage === RepairStage.ASSESSMENT && targetTime) {
         const deadline = task.assessmentAmount < 2000 
-          ? getWorkingHoursDeadline(task.createdAt, 4) 
-          : task.createdAt + 48 * 3600000;
+          ? getWorkingHoursDeadline(task.entryTime, 4) 
+          : task.entryTime + 48 * 3600000;
         isAssOver = Date.now() > deadline;
       }
       if (isAssOver || isDelOver) overdueCount++;
@@ -131,8 +120,6 @@ const ManagerDashboard: React.FC<Props> = ({ tasks, onUpdateRemarks }) => {
 
   return (
     <div className="space-y-6 pb-20 animate-in fade-in duration-500">
-      
-      {/* 核心指标看板 */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 md:gap-4">
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between hover:border-blue-400 transition-all">
           <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">站场总负荷</p>
@@ -142,13 +129,10 @@ const ManagerDashboard: React.FC<Props> = ({ tasks, onUpdateRemarks }) => {
           </div>
         </div>
         
-        <button 
-          onClick={() => setActiveTrend('ASSESSMENT')}
-          className="bg-blue-600 p-4 rounded-2xl shadow-lg flex flex-col justify-between hover:scale-[1.02] active:scale-95 transition-all text-left group"
-        >
+        <button onClick={() => setActiveTrend('ASSESSMENT')} className="bg-blue-600 p-4 rounded-2xl shadow-lg flex flex-col justify-between hover:scale-[1.02] active:scale-95 transition-all text-left group text-blue-100">
           <div className="flex justify-between items-start">
-            <p className="text-blue-100 text-[10px] font-black uppercase tracking-widest">定损时效达标率</p>
-            <ChevronRight size={14} className="text-blue-200 opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0 transition-all" />
+            <p className="text-[10px] font-black uppercase tracking-widest">定损时效达标率</p>
+            <ChevronRight size={14} className="opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0 transition-all text-blue-200" />
           </div>
           <div className="flex items-end justify-between mt-2">
              <h4 className="text-2xl font-black text-white">{stats.assessmentSLARate}%</h4>
@@ -156,13 +140,10 @@ const ManagerDashboard: React.FC<Props> = ({ tasks, onUpdateRemarks }) => {
           </div>
         </button>
 
-        <button 
-          onClick={() => setActiveTrend('FAST_REPAIR')}
-          className="bg-purple-600 p-4 rounded-2xl shadow-lg flex flex-col justify-between hover:scale-[1.02] active:scale-95 transition-all text-left group"
-        >
+        <button onClick={() => setActiveTrend('FAST_REPAIR')} className="bg-purple-600 p-4 rounded-2xl shadow-lg flex flex-col justify-between hover:scale-[1.02] active:scale-95 transition-all text-left group text-purple-100">
           <div className="flex justify-between items-start">
-            <p className="text-purple-100 text-[10px] font-black uppercase tracking-widest">小额快修达成率</p>
-            <ChevronRight size={14} className="text-purple-200 opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0 transition-all" />
+            <p className="text-[10px] font-black uppercase tracking-widest">小额快修达成率</p>
+            <ChevronRight size={14} className="opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0 transition-all text-purple-200" />
           </div>
           <div className="flex items-end justify-between mt-2">
              <h4 className="text-2xl font-black text-white">{stats.fastRepairRate}%</h4>
@@ -170,13 +151,10 @@ const ManagerDashboard: React.FC<Props> = ({ tasks, onUpdateRemarks }) => {
           </div>
         </button>
 
-        <button 
-          onClick={() => setActiveTrend('DELIVERY')}
-          className="bg-slate-900 p-4 rounded-2xl shadow-lg flex flex-col justify-between hover:scale-[1.02] active:scale-95 transition-all text-left group"
-        >
+        <button onClick={() => setActiveTrend('DELIVERY')} className="bg-slate-900 p-4 rounded-2xl shadow-lg flex flex-col justify-between hover:scale-[1.02] active:scale-95 transition-all text-left group text-slate-400">
           <div className="flex justify-between items-start">
-            <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">预计交车达成率</p>
-            <ChevronRight size={14} className="text-slate-500 opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0 transition-all" />
+            <p className="text-[10px] font-black uppercase tracking-widest">预计交车达成率</p>
+            <ChevronRight size={14} className="opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0 transition-all text-slate-500" />
           </div>
           <div className="flex items-end justify-between mt-2">
              <h4 className="text-2xl font-black text-white">{stats.onTimeDeliveryRate}%</h4>
@@ -193,7 +171,6 @@ const ManagerDashboard: React.FC<Props> = ({ tasks, onUpdateRemarks }) => {
         </div>
       </div>
 
-      {/* 趋势图 overlay */}
       {activeTrend && (
         <div className="bg-white p-6 rounded-3xl border border-blue-100 shadow-xl shadow-blue-50/50 animate-in slide-in-from-top-4 duration-500">
           <div className="flex justify-between items-center mb-6">
@@ -251,7 +228,6 @@ const ManagerDashboard: React.FC<Props> = ({ tasks, onUpdateRemarks }) => {
         </div>
       )}
 
-      {/* 车间流转状态 */}
       <div className="space-y-4">
         <div className="flex items-center justify-between px-1">
           <h3 className="text-base md:text-xl font-black text-slate-800 tracking-tight flex items-center gap-2">
@@ -277,10 +253,9 @@ const ManagerDashboard: React.FC<Props> = ({ tasks, onUpdateRemarks }) => {
                     let isAssOver = false;
                     if (task.currentStage === RepairStage.ASSESSMENT) {
                        const hoursLimit = task.assessmentAmount < 2000 ? 4 : (task.assessmentAmount <= 10000 ? 48 : null);
-                       if (hoursLimit === 4) isAssOver = Date.now() > getWorkingHoursDeadline(task.createdAt, 4);
-                       else if (hoursLimit === 48) isAssOver = Date.now() > task.createdAt + 48 * 3600000;
+                       if (hoursLimit === 4) isAssOver = Date.now() > getWorkingHoursDeadline(task.entryTime, 4);
+                       else if (hoursLimit === 48) isAssOver = Date.now() > task.entryTime + 48 * 3600000;
                     }
-                    
                     const remainingHours = Math.round((task.expectedDeliveryTime - Date.now()) / 3600000);
 
                     return (
@@ -306,9 +281,8 @@ const ManagerDashboard: React.FC<Props> = ({ tasks, onUpdateRemarks }) => {
                            </div>
                         </div>
 
-                        {/* 备注区域 */}
                         <div className="mb-3 px-1.5 py-1 bg-amber-50/30 rounded-lg border border-amber-100/30">
-                          {editingRemarksId === task.id ? (
+                          {editingRemarksId === task.id && !isHQ ? (
                             <textarea 
                               autoFocus
                               className="w-full bg-transparent text-[10px] text-slate-600 outline-none border-none resize-none p-0 leading-tight font-medium"
@@ -326,12 +300,12 @@ const ManagerDashboard: React.FC<Props> = ({ tasks, onUpdateRemarks }) => {
                             />
                           ) : (
                             <div 
-                              onClick={() => setEditingRemarksId(task.id)}
-                              className="flex items-start gap-1 cursor-pointer group"
+                              onClick={() => !isHQ && setEditingRemarksId(task.id)}
+                              className={`flex items-start gap-1 ${isHQ ? 'cursor-default' : 'cursor-pointer group'}`}
                             >
                               <MessageSquare size={10} className="text-amber-500 mt-0.5 shrink-0" />
                               <p className="text-[10px] text-slate-500 leading-tight font-medium line-clamp-2">
-                                {task.remarks || '点击添加备注...'}
+                                {task.remarks || (isHQ ? '暂无备注' : '点击添加备注...')}
                               </p>
                             </div>
                           )}
@@ -340,7 +314,7 @@ const ManagerDashboard: React.FC<Props> = ({ tasks, onUpdateRemarks }) => {
                         <div className="flex flex-col gap-1 mt-2 pt-2 border-t border-slate-50">
                            <div className="flex items-center gap-1.5 text-[10px]">
                               <Clock size={12} className="text-slate-300" />
-                              <span className="text-slate-400 font-bold">进厂: {new Date(task.createdAt).toLocaleString([], {month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'})}</span>
+                              <span className="text-slate-400 font-bold">进厂: {new Date(task.entryTime).toLocaleString([], {month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'})}</span>
                            </div>
                            <div className="flex items-center justify-between">
                               <div className="flex items-center gap-1.5 text-[10px]">
@@ -364,7 +338,6 @@ const ManagerDashboard: React.FC<Props> = ({ tasks, onUpdateRemarks }) => {
         </div>
       </div>
 
-      {/* 产值分布与统计 */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="bg-white p-6 rounded-[24px] border border-slate-100 shadow-sm">
            <h4 className="font-black text-slate-800 mb-4 flex items-center gap-2 text-sm uppercase tracking-wider">
