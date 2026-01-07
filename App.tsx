@@ -30,13 +30,11 @@ const App: React.FC = () => {
 
     const performInit = async (AV: any) => {
       try {
-        // 重要提示：发布到 Vercel (海外) 建议使用 LeanCloud 国际版
-        // 如果坚持使用国内版，请确保在 LeanCloud 控制台绑定了已备案的域名
         if (!AV.applicationId) {
           AV.init({
             appId: "7gNAZ1e3dGH3L8EcunAUH1ud-gzGzoHsz",
             appKey: "CGvlUiDgQdgYO04uek5fXR3C",
-            serverURL: "https://7gnaz1e3.lc-cn-n1-shared.com" // 国内版共享域名在 Vercel 环境下可能被封禁
+            serverURL: "https://7gnaz1e3.lc-cn-n1-shared.com"
           });
         }
 
@@ -88,6 +86,7 @@ const App: React.FC = () => {
     setIsLoading(true);
     try {
       const query = new AV.Query('RepairTask');
+      // 核心逻辑：非总部管理员只能看自己店的
       if (activeUser.role !== 'HQ_OPERATOR') {
         query.equalTo('shopId', activeUser.shopId);
       } else if (selectedShopFilter !== 'ALL') {
@@ -167,7 +166,18 @@ const App: React.FC = () => {
       const task = new RepairTaskObj();
       const now = Date.now();
       const history = [{ stage: RepairStage.ASSESSMENT, startTime: now, handler: loggedInUser.name }];
-      task.set({ ...taskData, currentStage: RepairStage.ASSESSMENT, isSparePartsReady: false, entryTime: now, history });
+      
+      // 确保 shopId 准确
+      const finalShopId = taskData.shopId || loggedInUser.shopId;
+      
+      task.set({ 
+        ...taskData, 
+        shopId: finalShopId,
+        currentStage: RepairStage.ASSESSMENT, 
+        isSparePartsReady: false, 
+        entryTime: now, 
+        history 
+      });
       await task.save();
       await fetchTasks(); 
       setIsModalOpen(false);
@@ -222,11 +232,6 @@ const App: React.FC = () => {
         <AlertCircle size={48} className="text-rose-500 mb-4" />
         <h2 className="text-xl font-black mb-2">服务接入受阻</h2>
         <p className="text-slate-400 text-center max-w-md mb-6">{error}</p>
-        <div className="bg-white/10 p-4 rounded-xl text-xs text-amber-200 mb-6">
-          <strong>排查建议：</strong><br/>
-          由于您正在使用海外托管 (Vercel)，请确保 LeanCloud 为<b>国际版</b>应用。<br/>
-          若使用国内版，API 将因域名备案政策被拦截。
-        </div>
         <button onClick={() => window.location.reload()} className="bg-white text-slate-900 px-8 py-3 rounded-2xl font-black shadow-xl">刷新重试</button>
       </div>
     );
@@ -354,7 +359,10 @@ const App: React.FC = () => {
                       {allShops.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                   ) : (
-                    <div className="px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl font-bold text-blue-600">{loggedInUser.shopId}</div>
+                    <>
+                      <div className="px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl font-bold text-blue-600">{loggedInUser.shopId}</div>
+                      <input type="hidden" name="shopId" value={loggedInUser.shopId} />
+                    </>
                   )}
                 </div>
                 <div className="col-span-2">
@@ -366,11 +374,23 @@ const App: React.FC = () => {
                   <input required name="contact" className="w-full px-4 py-3 border-2 border-slate-100 rounded-xl font-bold" />
                 </div>
                 <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 ml-1">保险公司</label>
+                  <input required name="insurance" placeholder="例如：中国平安" className="w-full px-4 py-3 border-2 border-slate-100 rounded-xl font-bold" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 ml-1">定损金额 (元)</label>
+                  <input required type="number" name="amount" placeholder="0.00" className="w-full px-4 py-3 border-2 border-slate-100 rounded-xl font-bold" />
+                </div>
+                <div>
                   <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 ml-1">承诺交车时间</label>
                   <input required type="datetime-local" name="expected" className="w-full px-4 py-3 border-2 border-slate-100 rounded-xl font-bold" />
                 </div>
                 <div className="col-span-2">
-                  <button type="submit" disabled={isSubmitting} className="w-full bg-blue-600 text-white font-black py-4 rounded-2xl flex items-center justify-center gap-2">
+                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 ml-1">备注信息</label>
+                  <textarea name="remarks" className="w-full px-4 py-3 border-2 border-slate-100 rounded-xl font-bold min-h-[80px]" />
+                </div>
+                <div className="col-span-2 pt-2">
+                  <button type="submit" disabled={isSubmitting} className="w-full bg-blue-600 text-white font-black py-4 rounded-2xl flex items-center justify-center gap-2 shadow-xl hover:bg-blue-700 active:scale-[0.98] transition-all">
                     {isSubmitting ? <Loader2 className="animate-spin" /> : '完成登记并同步'}
                   </button>
                 </div>
